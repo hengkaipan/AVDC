@@ -13,6 +13,8 @@ from torchvideotransforms import video_transforms, volume_transforms
 from einops import rearrange
 # from vidaug import augmentors as va
 
+from torchvision.transforms.functional import to_pil_image
+
 random.seed(0)
 
 ### Sequential Datasets: given first frame, predict all the future frames
@@ -322,16 +324,15 @@ class CustomSequentialDataset(Dataset):
         sequence_dirs = glob(f"{path}/**/metaworld_dataset/*/*/*/", recursive=True)
         self.tasks = []
         self.sequences = []
-        # for i in range(len(base_dataset)):
-            
-        for seq_dir in sequence_dirs:
-            task = seq_dir.split("/")[-4]
-            seq_id= int(seq_dir.split("/")[-2])
-            # if task not in included_tasks or seq_id not in included_idx:
-            #     continue
-            seq = sorted(glob(f"{seq_dir}*.png"), key=lambda x: int(x.split("/")[-1].rstrip(".png")))
-            self.sequences.append(seq)
-            self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
+        for i in range(len(base_dataset)):
+            obs, act, state, mask = base_dataset[i]
+            obs = obs['visual']
+            self.sequences.append(obs)
+            state = state[-1]
+            block_x, block_y, block_angle = state[2].item(), state[3].item(), state[4].item()
+            block_angle_degrees = round(np.degrees(block_angle) % 360, 2)
+            goal_description = f"push the T-shape block to the location ({block_x}, {block_y}) with orientation {block_angle_degrees} degrees"
+            self.tasks.append(goal_description)
     
         if randomcrop:
             self.transform = video_transforms.Compose([
@@ -370,7 +371,7 @@ class CustomSequentialDataset(Dataset):
     def __getitem__(self, idx):
         try:
             samples = self.get_samples(idx)
-            images = self.transform([Image.open(s) for s in samples]) # [c f h w]
+            images = self.transform([to_pil_image(s) for s in samples]) # [c f h w]
             x_cond = images[:, 0] # first frame
             x = rearrange(images[:, 1:], "c f h w -> (f c) h w") # all other frames
             task = self.tasks[idx]

@@ -1,24 +1,31 @@
 from goal_diffusion import GoalGaussianDiffusion, Trainer
 from unet import UnetMW as Unet
 from transformers import CLIPTextModel, CLIPTokenizer
-from datasets_avdc import SequentialDatasetv2
+from datasets_avdc import CustomSequentialDataset
 from torch.utils.data import Subset
 import argparse
 
+import sys
+sys.path.insert(0,'/home/gary/wm_robot')
+
+from datasets.pusht_dset import PushTDataset
 
 def main(args):
     valid_n = 1
     sample_per_seq = 8
     target_size = (128, 128)
+    
+    base_dataset = PushTDataset(data_path = '/data/jeff/workspace/pusht_dataset', with_velocity=False,n_rollout=5)
 
     if args.mode == "inference":
         train_set = valid_set = [None]  # dummy
     else:
-        train_set = SequentialDatasetv2(
+        train_set = CustomSequentialDataset(
             sample_per_seq=sample_per_seq,
             path="../datasets/metaworld",
             target_size=target_size,
             randomcrop=True,
+            base_dataset=base_dataset
         )
         valid_inds = [i for i in range(0, len(train_set), len(train_set) // valid_n)][
             :valid_n
@@ -52,15 +59,15 @@ def main(args):
         train_set=train_set,
         valid_set=valid_set,
         train_lr=1e-4,
-        train_num_steps=60000,
-        save_and_sample_every=2500,
+        train_num_steps=20,
+        save_and_sample_every=5,
         ema_update_every=10,
         ema_decay=0.999,
         train_batch_size=16,
         valid_batch_size=32,
         gradient_accumulate_every=1,
         num_samples=valid_n,
-        results_folder="../results/mw",
+        results_folder="../results/ours",
         fp16=True,
         amp=True,
     )
