@@ -1,7 +1,7 @@
-from goal_diffusion import GoalGaussianDiffusion, Trainer
-from unet import UnetMW as Unet
-from transformers import CLIPTextModel, CLIPTokenizer
-from datasets_avdc import CustomSequentialDataset
+from img_goal_diffusion import GoalGaussianDiffusion, Trainer
+from img_unet import UnetMW as Unet
+from transformers import CLIPTextModel, CLIPTokenizer, CLIPVisionModel
+from datasets_avdc import CustomSequentialImageDataset
 from torch.utils.data import Subset
 import argparse
 
@@ -12,7 +12,7 @@ from datasets.pusht_dset import PushTDataset
 
 def main(args):
     valid_n = 1
-    sample_per_seq = 8
+    sample_per_seq = 9
     target_size = (128, 128)
     
     base_dataset = PushTDataset(data_path = '/data/jeff/workspace/pusht_dataset', with_velocity=False,n_rollout=5)
@@ -20,7 +20,7 @@ def main(args):
     if args.mode == "inference":
         train_set = valid_set = [None]  # dummy
     else:
-        train_set = CustomSequentialDataset(
+        train_set = CustomSequentialImageDataset(
             sample_per_seq=sample_per_seq,
             path="../datasets/metaworld",
             target_size=target_size,
@@ -39,9 +39,12 @@ def main(args):
     text_encoder = CLIPTextModel.from_pretrained(pretrained_model)
     text_encoder.requires_grad_(False)
     text_encoder.eval()
+    vision_encoder = CLIPVisionModel.from_pretrained(pretrained_model) # input should be (B 3 224 224) and output is (B 50 768) or (B 768)
+    vision_encoder.requires_grad_(False)
+    vision_encoder.eval()
 
     diffusion = GoalGaussianDiffusion(
-        channels=3 * (sample_per_seq - 1),
+        channels=3 * (sample_per_seq - 2),
         model=unet,
         image_size=target_size,
         timesteps=100,
@@ -55,7 +58,7 @@ def main(args):
     trainer = Trainer(
         diffusion_model=diffusion,
         tokenizer=tokenizer,
-        text_encoder=text_encoder,
+        text_encoder=vision_encoder,
         train_set=train_set,
         valid_set=valid_set,
         train_lr=1e-4,
