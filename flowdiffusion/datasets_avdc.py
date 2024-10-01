@@ -379,7 +379,73 @@ class CustomSequentialDataset(Dataset):
         except Exception as e:
             print(e)
             return self.__getitem__(idx + 1 % self.__len__()) 
-        
+
+class CustomSequentialImageDataset(Dataset):
+    def __init__(self, path="../datasets/valid", sample_per_seq=7, target_size=(128, 128), frameskip=None, randomcrop=False, base_dataset = None):
+        print("Preparing dataset...")
+        self.sample_per_seq = sample_per_seq
+
+        self.frame_skip = frameskip
+
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset/*/*/*/", recursive=True)
+        self.tasks = []
+        self.sequences = []
+        for i in range(len(base_dataset)):
+            obs, act, state, mask = base_dataset[i]
+            obs = obs['visual']
+            self.sequences.append(obs)
+            state = state[-1]
+            block_x, block_y, block_angle = state[2].item(), state[3].item(), state[4].item()
+            block_angle_degrees = round(np.degrees(block_angle) % 360, 2)
+            goal_description = f"push the T-shape block to the location ({block_x}, {block_y}) with orientation {block_angle_degrees} degrees"
+            self.tasks.append(goal_description)
+    
+        if randomcrop:
+            self.transform = video_transforms.Compose([
+                video_transforms.CenterCrop((160, 160)),
+                video_transforms.RandomCrop((128, 128)),
+                video_transforms.Resize(target_size),
+                volume_transforms.ClipToTensor()
+            ])
+        else:
+            self.transform = video_transforms.Compose([
+                video_transforms.CenterCrop((128, 128)),
+                video_transforms.Resize(target_size),
+                volume_transforms.ClipToTensor()
+            ])
+        print("Done")
+
+    def get_samples(self, idx):
+        seq = self.sequences[idx]
+        # if frameskip is not given, do uniform sampling betweeen a random frame and the last frame
+        if self.frame_skip is None:
+            start_idx = random.randint(0, len(seq)-1)
+            seq = seq[start_idx:]
+            N = len(seq)
+            samples = []
+            for i in range(self.sample_per_seq-1):
+                samples.append(int(i*(N-1)/(self.sample_per_seq-1)))
+            samples.append(N-1)
+        else:
+            start_idx = random.randint(0, len(seq)-1)
+            samples = [i if i < len(seq) else -1 for i in range(start_idx, start_idx+self.frame_skip*self.sample_per_seq, self.frame_skip)]
+        return [seq[i] for i in samples]
+    
+    def __len__(self):
+        return len(self.sequences)
+    
+    def __getitem__(self, idx):
+        try:
+            samples = self.get_samples(idx)
+            images = self.transform([to_pil_image(s) for s in samples]) # [c f h w]
+            x_cond = images[:, 0] # first frame
+            x = rearrange(images[:, 1:-1], "c f h w -> (f c) h w") # all other frames
+            task = images[:, -1] # last frame
+            return x, x_cond, task
+        except Exception as e:
+            print(e)
+            return self.__getitem__(idx + 1 % self.__len__()) 
+   
 class SequentialFlowDataset(Dataset):
     def __init__(self, path="../datasets/valid", sample_per_seq=7, target_size=(128, 128), frameskip=None, randomcrop=False):
         print("Preparing dataset...")
