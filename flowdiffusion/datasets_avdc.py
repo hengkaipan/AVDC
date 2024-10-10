@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 import os
 from glob import glob
 import torch
-from utils import get_paths, get_paths_from_dir
+from utils_avdc import get_paths, get_paths_from_dir
 from tqdm import tqdm
 from PIL import Image
 import numpy as np
